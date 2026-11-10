@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clam Days — Tides</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --bg:#0b1724; --panel:#12243a; --panel2:#18304c; --ink:#e8f0f8; --mute:#8fa6bf;
+  --line:#25405f; --water:#3fa7d6; --hi:#5fd3a6; --lo:#f0a35e; --bad:#e2675c; --accent:#ffd166;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
+header{position:sticky;top:0;z-index:1000;background:var(--bg);padding:10px 12px 8px;border-bottom:1px solid var(--line)}
+.row{display:flex;gap:8px;align-items:center}
+h1{font-size:18px;margin:0;flex:1;letter-spacing:.3px}
+h1 span{color:var(--water)}
+.seg{display:flex;background:var(--panel);border-radius:10px;padding:3px;gap:2px}
+.seg button{border:0;background:none;color:var(--mute);padding:6px 10px;border-radius:8px;font-weight:600;font-size:13px}
+.seg button.on{background:var(--water);color:#04121e}
+.search{position:relative;margin-top:8px}
+.search input{width:100%;padding:9px 12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--ink);font-size:15px}
+#results{position:absolute;left:0;right:0;top:42px;background:var(--panel2);border-radius:10px;max-height:50vh;overflow:auto;display:none;box-shadow:0 8px 24px #0008}
+#results div{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+#results div small{color:var(--mute)}
+main{max-width:900px;margin:0 auto;padding:10px 12px 40px}
+#mapWrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
+#map{height:38vh;min-height:240px;background:#0e2033}
+#mapToggle{position:absolute;right:8px;bottom:8px;z-index:500;border:0;border-radius:8px;padding:6px 10px;background:#000a;color:#fff;font-size:12px}
+.card{background:var(--panel);border-radius:14px;padding:12px 14px;margin-top:10px;border:1px solid var(--line)}
+.stName{font-size:17px;font-weight:700}
+.stMeta{color:var(--mute);font-size:12px}
+.now{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;margin-top:8px}
+.big{font-size:40px;font-weight:800;line-height:1}
+.big small{font-size:16px;color:var(--mute);font-weight:600}
+.trend{font-weight:700}
+.kv{color:var(--mute);font-size:13px}
+.kv b{color:var(--ink)}
+canvas{width:100%;display:block}
+.dayhdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.dayhdr button{background:var(--panel2);border:0;color:var(--ink);border-radius:8px;padding:4px 10px;font-size:16px}
+.days{display:flex;flex-direction:column;gap:6px}
+.day{display:grid;grid-template-columns:62px 1fr 44px;gap:10px;align-items:center;padding:8px 10px;border-radius:10px;background:var(--panel2);cursor:pointer;border:1px solid transparent}
+.day.sel{border-color:var(--water)}
+.day .d{font-weight:700;font-size:13px;line-height:1.2}
+.day .d small{display:block;color:var(--mute);font-weight:500}
+.day .why{font-size:12px;color:var(--mute)}
+.day .why b{color:var(--ink);font-weight:600}
+.bar{height:6px;border-radius:3px;background:#0005;margin-bottom:4px;overflow:hidden}
+.bar i{display:block;height:100%}
+.minus{background:#ff5c8a;color:#fff;font-weight:700;border-radius:5px;padding:0 5px;white-space:nowrap}
+.minus b{color:#fff}
+.near{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.near button{display:flex;justify-content:space-between;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:10px;padding:8px 10px;font-size:14px}
+.near button.cur{border-color:var(--water)}
+.near small{color:var(--mute);white-space:nowrap}
+.tag{font-size:11px;padding:1px 6px;border-radius:10px;background:#5fd3a633;color:var(--hi)}
+.tag.in{background:#f0a35e33;color:var(--lo)}
+.nowWrap{display:flex;gap:10px;align-items:center}
+.nowWrap>div:first-child{flex:1;min-width:0}
+.gauge{flex:none;width:190px;height:auto}
+.gauge text{font:600 12px system-ui;fill:#8fa6bf}
+.gauge text.cur{fill:#ffd166;font-weight:800;font-size:14px}
+@keyframes wv1{from{transform:translateX(0)}to{transform:translateX(calc(var(--l,50px) * -1))}}
+@keyframes wv2{from{transform:translateX(calc(var(--l,40px) * -1))}to{transform:translateX(0)}}
+.gauge .w1{animation:wv1 3.2s linear infinite}
+.gauge .w2{animation:wv2 4.8s linear infinite}
+@keyframes bobU{0%,100%{transform:translateY(3px)}50%{transform:translateY(-5px)}}
+@keyframes bobD{0%,100%{transform:translateY(-3px)}50%{transform:translateY(5px)}}
+.gauge .up{animation:bobU 1.6s ease-in-out infinite}
+.gauge .dn{animation:bobD 1.6s ease-in-out infinite}
+@media (max-width:440px){.gauge{width:168px}}
+.gauge text.sb{fill:#fff;font-weight:800;font-size:14px}
+.surf{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:10px;padding:10px;border-radius:12px;background:var(--panel2);border:2px solid var(--line)}
+.surf.mid{border-color:var(--accent);background:#ffd16614}
+.surf.bad{border-color:var(--bad);background:#e2675c26}
+.surf .n{font-size:26px;font-weight:800;line-height:1.1}
+.surf .n small{font-size:13px;color:var(--mute);font-weight:600}
+.surf .l{font-size:11px;color:var(--mute);text-transform:uppercase;letter-spacing:.5px}
+.surf.bad .n.h{color:var(--bad)} .surf.mid .n.h{color:var(--accent)}
+.surf .warn{grid-column:1/-1;font-weight:700;font-size:14px;margin-top:4px}
+.surf.bad .warn{color:var(--bad)} .surf.mid .warn{color:var(--accent)}
+.schip{display:inline-block;font-size:13px;font-weight:800;padding:1px 7px;border-radius:6px;white-space:nowrap}
+.schip.ok{background:#5fd3a633;color:var(--hi)} .schip.mid{background:#ffd16633;color:var(--accent)} .schip.bad{background:var(--bad);color:#fff}
+.upRow::-webkit-scrollbar{height:6px}.upRow::-webkit-scrollbar-track{background:transparent}.upRow::-webkit-scrollbar-thumb{background:#3a5d82;border-radius:3px}
+.upRow{scrollbar-width:thin;scrollbar-color:#3a5d82 transparent;display:flex;gap:8px;overflow-x:auto;padding:8px 0 4px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.up{flex:0 0 150px;scroll-snap-align:start;display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);position:relative}
+.up.best{border-color:var(--accent)}
+.up .top{display:flex;justify-content:space-between;align-items:flex-start}
+.up .score{font-size:20px}
+.up .lowv{font-size:18px}
+.up .when{font-size:13px}
+.up.go{cursor:pointer}
+.up .d{font-weight:700;font-size:14px;line-height:1.2}
+.up .d small{display:block;color:var(--mute);font-weight:500}
+.score{font-weight:800;text-align:right;font-size:17px}
+.legend{font-size:12px;color:var(--mute);margin-top:6px}
+.note{font-size:12px;color:var(--mute);margin-top:8px}
+.note a{color:var(--water)}
+.err{color:var(--bad);font-size:13px}
+.pill{display:inline-block;font-size:11px;padding:2px 7px;border-radius:20px;background:var(--panel2);color:var(--mute);margin-left:6px;vertical-align:middle}
+.leaflet-popup-content{font:13px/1.35 system-ui}
+.leaflet-popup-content button{margin-top:6px;border:0;border-radius:6px;padding:5px 9px;background:#3fa7d6;color:#04121e;font-weight:700}
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1>Clam <span>Days</span></h1>
+    <div class="seg" id="modeSeg">
+      <button data-m="clam">Clam</button>
+      <button data-m="tide">Tides</button>
+    </div>
+  </div>
+  <div class="search">
+    <input id="q" placeholder="Search tide stations (e.g. Long Beach, Westport, Seaside)" autocomplete="off">
+    <div id="results"></div>
+  </div>
+</header>
+
+<main>
+  <div class="card" id="upCard" style="display:none;margin-top:0;margin-bottom:10px">
+    <div class="row"><div style="font-weight:700;flex:1">Upcoming good clamming tides</div><div class="kv">next 45 days · swipe ›</div></div>
+    <div class="upRow" id="upList"></div>
+  </div>
+
+  <div class="note" style="margin:0 0 6px">Tap anywhere on the map to find the nearest stations to that spot.</div>
+  <div id="mapWrap"><div id="map"></div><button id="mapToggle">Hide map</button></div>
+
+  <div class="card" id="nearCard" style="display:none"></div>
+
+  <div class="card" id="nowCard"><div class="stMeta">Loading stations…</div></div>
+
+  <div class="card">
+    <div class="dayhdr">
+      <button id="prevDay">‹</button>
+      <div id="chartTitle" style="font-weight:700"></div>
+      <button id="nextDay">›</button>
+    </div>
+    <canvas id="chart" height="220"></canvas>
+    <div class="legend">Times shown in this device's time zone · heights in feet above MLLW · shaded = night</div>
+  </div>
+
+  <div class="card">
+    <div style="font-weight:700;margin-bottom:8px" id="daysTitle">Next 14 days</div>
+    <div class="days" id="days"></div>
+    <div class="note" id="modeNote"></div>
+  </div>
+
+  <div class="note">Surf/swell: Open-Meteo Marine forecast (open-meteo.com), offshore model, so the surf on the beach can differ. Tide data: NOAA CO-OPS (tidesandcurrents.noaa.gov). The curve between highs and lows is cosine-interpolated from NOAA's high/low predictions. This is a planning aid and doesn't replace official tables, openings, or bar reports.</div>
+</main>
+
+<script>
+"use strict";
+/* ---------- config ---------- */
+const API = "https://api.tidesandcurrents.noaa.gov/api/prod/datagetter";
+const MD  = "https://api.tidesandcurrents.noaa.gov/mdapi/prod/webapi/stations.json?type=tidepredictions";
+const APP = "ClamDays";
+const DEFAULT_STATION = "9439040"; // Astoria (Tongue Point)
+const DAYS_AHEAD = 14;
+// Open-beach clam areas -> the NOAA station that matches the surf, not the nearby river/bay gauge
+const BEACHES = [
+  {label:"Seaside / Gearhart / Clatsop beaches (open coast)", keys:["seaside","gearhart","clatsop","sunset beach","del rey"],
+   id:"9440574", name:"Columbia River North Jetty", lat:46.267, lng:-124.067}
+];
+const H = 3600e3, D = 864e5;
+
+const store = {
+  get(k, d){ try{ const v = localStorage.getItem(k); return v==null ? d : JSON.parse(v); }catch(e){ return d; } },
+  set(k, v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+};
+
+const S = {
+  mode: store.get("cd.mode", "clam") === "tide" ? "tide" : "clam",
+  stations: [],
+  station: null,
+  ex: [],          // extrema [{t:Date,v:Number,type:'H'|'L'}]
+  obs: null,       // {t:Date,v:Number}
+  dayOffset: 0,
+  dayStats: []
+};
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const pad = n => String(n).padStart(2, "0");
+const ymdUTC = d => d.getUTCFullYear() + pad(d.getUTCMonth()+1) + pad(d.getUTCDate());
+const parseUTC = s => new Date(s.replace(" ", "T") + ":00Z");
+const fmtT = d => d.toLocaleTimeString([], {hour:"numeric", minute:"2-digit"});
+const fmtDay = d => d.toLocaleDateString([], {weekday:"short"});
+const fmtMD = d => d.toLocaleDateString([], {month:"short", day:"numeric"});
+const ft = v => (v < 0 ? "−" : "") + Math.abs(v).toFixed(1);
+const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+const startOfDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate()+n); return x; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function getJSON(url){
+  const r = await fetch(url);
+  if(!r.ok) throw new Error("HTTP " + r.status);
+  const j = await r.json();
+  if(j.error) throw new Error(j.error.message || "NOAA error");
+  return j;
+}
+
+/* ---------- sun (NOAA/Wikipedia sunrise equation) ---------- */
+function sunTimes(localDate, lat, lng){
+  const r = Math.PI/180;
+  const n = Math.round(Date.UTC(localDate.getFullYear(), localDate.getMonth(), localDate.getDate(), 12)/D + 2440587.5 - 2451545);
+  const Js = n - lng/360;
+  const M = (357.5291 + 0.98560028*Js) % 360;
+  const C = 1.9148*Math.sin(M*r) + 0.02*Math.sin(2*M*r) + 0.0003*Math.sin(3*M*r);
+  const lam = (M + C + 180 + 102.9372) % 360;
+  const Jt = 2451545 + Js + 0.0053*Math.sin(M*r) - 0.0069*Math.sin(2*lam*r);
+  const sd = Math.sin(lam*r)*Math.sin(23.4397*r);
+  const cd = Math.cos(Math.asin(sd));
+  const cw = (Math.sin(-0.833*r) - Math.sin(lat*r)*sd)/(Math.cos(lat*r)*cd);
+  const toDate = J => new Date((J - 2440587.5)*D);
+  if(cw > 1) return {rise:null, set:null, polar:"night"};
+  if(cw < -1) return {rise:null, set:null, polar:"day"};
+  const w = Math.acos(cw)/r;
+  return {rise: toDate(Jt - w/360), set: toDate(Jt + w/360)};
+}
+function isDaylight(t, sun, marginH=0){
+  if(sun.polar === "day") return true;
+  if(!sun.rise) return false;
+  return t >= sun.rise.getTime() + marginH*H && t <= sun.set.getTime() - marginH*H;
+}
+
+/* ---------- tide model ---------- */
+function levelAt(t){ // cosine interpolation between extrema
+  const ex = S.ex; if(ex.length < 2) return null;
+  for(let i=0;i<ex.length-1;i++){
+    const a = ex[i], b = ex[i+1];
+    if(t >= a.t && t <= b.t){
+      const f = (t - a.t)/(b.t - a.t);
+      return (a.v + b.v)/2 + (a.v - b.v)/2*Math.cos(Math.PI*f);
+    }
+  }
+  return null;
+}
+function nextExtremum(t){ return S.ex.find(e => e.t > t) || null; }
+
+/* ---------- swell / surf (Open-Meteo Marine, free, no key) ---------- */
+const MARINE = "https://marine-api.open-meteo.com/v1/marine";
+const M2FT = 3.28084;
+async function loadMarine(st){
+  S.marine = null;
+  const base = `${MARINE}?latitude=${st.lat.toFixed(3)}&longitude=${st.lng.toFixed(3)}` +
+    `&hourly=wave_height,swell_wave_height,swell_wave_period,swell_wave_direction&timezone=GMT&forecast_days=8&cell_selection=sea`;
+  const parse = j => {
+    const hr = j && j.hourly; if(!hr || !hr.time) return null;
+    const m = {t: hr.time.map(s => new Date(s + "Z").getTime()),
+      wh: hr.wave_height.map(v => v==null ? null : v*M2FT),
+      sh: hr.swell_wave_height.map(v => v==null ? null : v*M2FT),
+      sp: hr.swell_wave_period, sd: hr.swell_wave_direction};
+    return m.wh.filter(v => v != null).length > 12 ? m : null;
+  };
+  for(const extra of ["", "&models=ncep_gfswave025"]){
+    try{ const m = parse(await getJSON(base + extra)); if(m){ S.marine = m; return; } }catch(e){}
+  }
+}
+function marineIdx(t){
+  const m = S.marine; if(!m) return -1;
+  const i = Math.round((t - m.t[0])/H);
+  return i >= 0 && i < m.t.length && m.wh[i] != null ? i : -1;
+}
+function surfWindow(t0, t1){ // biggest surf in a time window
+  let best = null;
+  for(let t = t0; t <= t1; t += H){
+    const i = marineIdx(t); if(i < 0) continue;
+    if(!best || S.marine.wh[i] > best.wh) best = {wh: S.marine.wh[i], sh: S.marine.sh[i], sp: S.marine.sp[i], sd: S.marine.sd[i]};
+  }
+  return best;
+}
+function surfFactor(m){ // 1 = calm, drops as surf builds; long-period swell runs farther up the beach
+  const eff = m.wh*(m.sp >= 13 ? 1.2 : m.sp >= 10 ? 1.1 : 1);
+  return eff <= 4 ? 1 : eff >= 12 ? 0.15 : 1 - 0.85*(eff - 4)/8;
+}
+const compass = d => d == null ? "" : ["N","NE","E","SE","S","SW","W","NW"][Math.round(d/45) % 8];
+const surfLevel = m => { const f = surfFactor(m); return f >= 0.95 ? "ok" : f >= 0.6 ? "mid" : "bad"; };
+const surfTxt = m => `<span class="schip ${surfLevel(m)}">🌊 ${Math.round(m.wh)} ft${m.sp ? ` @ ${Math.round(m.sp)}s` : ""}</span>`;
+
+async function loadTides(st){
+  const begin = new Date(Date.now() - 2*D);
+  const end = new Date(Date.now() + (LIST_DAYS + 2)*D);
+  const url = `${API}?product=predictions&application=${APP}&begin_date=${ymdUTC(begin)}&end_date=${ymdUTC(end)}`+
+              `&datum=MLLW&station=${st.id}&time_zone=gmt&units=english&interval=hilo&format=json`;
+  const j = await getJSON(url);
+  S.ex = (j.predictions || []).map(p => ({t: parseUTC(p.t).getTime(), v: +p.v, type: p.type === "H" ? "H" : "L"}));
+  const marineP = loadMarine(st);
+  // observed water level (only stations with a gauge; silently skip otherwise)
+  S.obs = null;
+  try{
+    const o = await getJSON(`${API}?product=water_level&application=${APP}&date=latest&station=${st.id}&datum=MLLW&time_zone=gmt&units=english&format=json`);
+    const d = o.data && o.data[o.data.length-1];
+    if(d && d.v !== "") S.obs = {t: parseUTC(d.t).getTime(), v: +d.v};
+  }catch(e){}
+  await marineP;
+}
+
+/* ---------- daily scoring ---------- */
+function lowScore(L, sun, dayEnd){
+  const depth = clamp((0.5 - L.v)/2.5, 0, 1); // +0.5 ft -> 0, -2.0 ft -> 1
+  let timing, tw;
+  if(isDaylight(L.t, sun)) { timing = 1; tw = "daylight"; }
+  else if(sun.set && L.t > sun.set.getTime() && L.t < dayEnd) { timing = 0.75; tw = "evening, after dark"; }
+  else { timing = 0.2; tw = "before sunrise"; }
+  const surf = surfWindow(L.t - 2*H, L.t + 2*H);
+  const sf = surf ? surfFactor(surf) : 1;
+  return {L, tw, surf, sf, val: depth*(0.35 + 0.65*timing)*sf};
+}
+const LIST_DAYS = 45;
+function renderUpcoming(){
+  const card = $("#upCard");
+  if(S.mode !== "clam" || !S.station){ card.style.display = "none"; return; }
+  card.style.display = "";
+  const now = Date.now(), until = now + LIST_DAYS*D, st = S.station;
+  const items = S.ex.filter(e => e.type === "L" && e.t > now - 2*H && e.t < until && e.v <= 0).map(L => {
+    const d0 = startOfDay(new Date(L.t));
+    const r = lowScore(L, sunTimes(d0, st.lat, st.lng), addDays(d0,1).getTime());
+    return {...r, score: Math.round(100*r.val), off: Math.round((d0 - startOfDay(new Date()))/D)};
+  }).filter(r => r.tw !== "before sunrise" && r.score >= 40);
+  const top = new Set([...items].sort((a,b) => b.score - a.score).slice(0,3));
+  $("#upList").innerHTML = items.length ? items.map(r => {
+    const d = new Date(r.L.t), best = top.has(r);
+    return `<div class="up ${r.off < DAYS_AHEAD ? "go" : ""} ${best ? "best" : ""}" data-off="${r.off}">
+      <div class="top"><div class="d">${r.off === 0 ? "Today" : r.off === 1 ? "Tomorrow" : fmtDay(d)}<small>${fmtMD(d)}</small></div>
+        <div class="score" style="color:${scoreColor(r.score)}">${r.score}</div></div>
+      <div><span class="minus lowv">${ft(r.L.v)} ft</span></div>
+      <div class="when">${r.tw === "daylight" ? "☀️" : "🌙"} <b>${fmtT(d)}</b></div>
+      <div>${r.surf ? surfTxt(r.surf) : '<span class="kv">surf: no forecast yet</span>'}</div>
+      ${best ? '<div class="kv" style="color:var(--accent);font-weight:700">★ Best</div>' : ""}
+    </div>`;
+  }).join("") : `<div class="kv">No good daylight or evening minus tides in the next ${LIST_DAYS} days at this station.</div>`;
+  $("#upList").querySelectorAll(".up.go").forEach(el => el.onclick = () => {
+    S.dayOffset = +el.dataset.off; renderChart(); renderDays();
+    $("#chart").scrollIntoView({behavior:"smooth", block:"center"});
+  });
+}
+function computeDays(st){
+  const out = [];
+  const today = startOfDay(new Date());
+  for(let i=0;i<DAYS_AHEAD;i++){
+    const d0 = addDays(today, i), d1 = addDays(today, i+1);
+    const t0 = d0.getTime(), t1 = d1.getTime();
+    const sun = sunTimes(d0, st.lat, st.lng);
+    const ex = S.ex.filter(e => e.t >= t0 && e.t < t1);
+    // exchanges: consecutive extrema pairs that touch this day
+    let maxEx = 0, dayMaxEx = 0;
+    for(let k=0;k<S.ex.length-1;k++){
+      const a = S.ex[k], b = S.ex[k+1];
+      if(b.t < t0 || a.t >= t1) continue;
+      const r = Math.abs(b.v - a.v);
+      maxEx = Math.max(maxEx, r);
+      // exchange happening mostly in daylight
+      const mid = (a.t + b.t)/2;
+      if(isDaylight(mid, sun)) dayMaxEx = Math.max(dayMaxEx, r);
+    }
+    const lows = ex.filter(e => e.type === "L");
+    const highs = ex.filter(e => e.type === "H");
+    const minLow = lows.length ? lows.reduce((m,e)=> e.v < m.v ? e : m) : null;
+
+    // --- clam ---
+    let clam = 0, clamWhy = "No minus tide";
+    let bestLow = null, bestVal = -1;
+    for(const L of lows){
+      const r = lowScore(L, sun, t1);
+      if(r.val > bestVal){ bestVal = r.val; bestLow = r; }
+    }
+    if(bestLow){
+      clam = Math.round(100*bestVal);
+      clamWhy = `${bestLow.L.v < 0 ? '<span class="minus">' : "<span>"}<b>${ft(bestLow.L.v)} ft</b></span> low at <b>${fmtT(new Date(bestLow.L.t))}</b> (${bestLow.tw})`;
+      if(bestLow.L.v > 0.5) clamWhy = `Lowest low <b>${ft(bestLow.L.v)} ft</b>; not low enough`;
+      else if(bestLow.surf) clamWhy += ` · ${surfTxt(bestLow.surf)}`;
+      else if(S.marine) clamWhy += " · no surf forecast yet";
+    }
+
+    const tideWhy = ex.map(e => { const s = `${e.type==="H"?"H":"L"} ${fmtT(new Date(e.t))} <b>${ft(e.v)}</b>`;
+      return e.v < 0 ? `<span class="minus">${s}</span>` : s; }).join(" · ") +
+      ((sw => sw ? ` · max ${surfTxt(sw)}` : "")(surfWindow(t0, t1 - H)));
+    out.push({d0, sun, ex, maxEx, minLow, clam, clamWhy, tideWhy, highs, lows});
+  }
+  S.dayStats = out;
+}
+
+/* ---------- rendering ---------- */
+function scoreColor(s){ return s >= 70 ? "var(--hi)" : s >= 45 ? "var(--accent)" : "var(--bad)"; }
+
+function gaugeSVG(lv, prev, nx, rising, surf){
+  const lo = Math.min(prev.v, nx.v), hi = Math.max(prev.v, nx.v);
+  const f = clamp((lv - lo)/((hi - lo) || 1), 0, 1);
+  const X = 10, Y = 10, W = 96, G = 170;
+  // wave size follows the surf forecast (calm ripples -> big rollers)
+  // rear wave is drawn from the SWELL (height -> how tall, period -> how long); front wave stays fixed
+  const sw = surf && surf.sh != null ? surf.sh : surf ? surf.wh : null;
+  const amp = sw != null ? clamp(10 + sw*5, 10, 84) : 12;            // crest height is about amp/2 px
+  const head = amp/2 + 8;                                            // keep crests visible at high tide
+  const wy = Y + head + (1 - f)*(G - head - 12);
+  const len = Math.round(surf && surf.sp ? clamp(surf.sp*8, 50, 140) : 60);
+  const lvl = surf ? surfLevel(surf) : null;
+  const wave = (a, len) => {
+    let d = "M0,0";
+    for(let x = 0; x < W*2 + len; x += len) d += ` q${len/4},${-a} ${len/2},0 t${len/2},0`;
+    return d + ` V${G + 30} H0 Z`;
+  };
+  const curY = clamp(wy + 4, Y + 26, Y + G - 18);
+  const arrow = rising ? "M0,-22 L16,0 H6 V22 H-6 V0 H-16 Z" : "M0,22 L16,0 H6 V-22 H-6 V0 H-16 Z";
+  const badgeFill = {ok:"#2f8f6c", mid:"#b8901f", bad:"#e2675c"}[lvl] || "#25405f";
+  const svgH = surf ? Y + G + 46 : Y + G + 10;
+  return `<svg class="gauge" viewBox="0 0 190 ${svgH}" style="aspect-ratio:190/${svgH}" aria-label="Tide is ${Math.round(f*100)} percent between low and high">
+    <defs>
+      <clipPath id="gclip"><rect x="${X}" y="${Y}" width="${W}" height="${G}" rx="14"/></clipPath>
+      <linearGradient id="gw" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5cc3ef"/><stop offset="1" stop-color="#174f75"/></linearGradient>
+    </defs>
+    <rect x="${X}" y="${Y}" width="${W}" height="${G}" rx="14" fill="#081522"/>
+    <g clip-path="url(#gclip)">
+      <g transform="translate(${X},${wy.toFixed(1)})">
+        <path class="w2" style="--l:${len}px" d="${wave(amp,len)}" fill="${lvl==="bad" ? "#e2675c" : "#3fa7d6"}" opacity=".45"/>
+        <path class="w1" style="--l:50px" d="${wave(5,50)}" fill="url(#gw)"/>
+      </g>
+      <g transform="translate(${X + W/2},${Y + G/2})"><g class="${rising ? "up" : "dn"}">
+        <path d="${arrow}" fill="${rising ? "#5fd3a6" : "#f0a35e"}" stroke="#04121e" stroke-width="2"/>
+      </g></g>
+    </g>
+    <rect x="${X}" y="${Y}" width="${W}" height="${G}" rx="14" fill="none" stroke="#3a5d82" stroke-width="2"/>
+    <line x1="${X + W}" y1="${wy}" x2="${X + W + 9}" y2="${wy}" stroke="#ffd166" stroke-width="2.5"/>
+    <text x="${X + W + 9}" y="${Y + 11}">H ${ft(hi)}</text>
+    <text x="${X + W + 9}" y="${Y + G}">L ${ft(lo)}</text>
+    <text class="cur" x="${X + W + 12}" y="${curY}">${ft(lv)} ft</text>
+    ${surf ? `<rect x="${X}" y="${Y + G + 10}" width="${W}" height="30" rx="9" fill="${badgeFill}"/>
+      <text class="sb" x="${X + W/2}" y="${Y + G + 30}" text-anchor="middle">🌊 ${surf.wh.toFixed(1)} ft</text>
+      <text x="${X + W + 9}" y="${Y + G + 23}">swell ${surf.sh != null ? surf.sh.toFixed(1) : "—"} ft</text>
+      <text x="${X + W + 9}" y="${Y + G + 38}">${surf.sp != null ? Math.round(surf.sp) + "s" : ""} ${compass(surf.sd)}</text>` : ""}
+  </svg>`;
+}
+
+function renderNow(){
+  const st = S.station, now = Date.now();
+  const lv = levelAt(now), nx = nextExtremum(now);
+  const card = $("#nowCard");
+  if(lv == null){ card.innerHTML = `<div class="stName">${esc(st.name)}</div><div class="err">No prediction data for this station.</div>`; return; }
+  const rising = nx && nx.type === "H";
+  const prev = [...S.ex].reverse().find(e => e.t <= now);
+  S.surfNow = "";
+  const mi = marineIdx(Math.floor(now/H)*H);
+  const surfNowObj = mi < 0 ? null : {wh:S.marine.wh[mi], sh:S.marine.sh[mi], sp:S.marine.sp[mi], sd:S.marine.sd[mi]};
+  let pct = "";
+  if(prev && nx){ const p = Math.round(clamp((lv - prev.v)/((nx.v - prev.v) || 1), 0, 1)*100);
+    pct = `<div class="kv">${p}% of the way from the last ${prev.type==="H"?"high":"low"} to the next ${nx.type==="H"?"high":"low"}</div>`; }
+  const mins = nx ? Math.round((nx.t - now)/60000) : 0;
+  const inStr = mins >= 60 ? `${Math.floor(mins/60)}h ${mins%60}m` : `${mins}m`;
+  const sun = sunTimes(new Date(), st.lat, st.lng);
+  let obsHtml = "";
+  if(S.obs && now - S.obs.t < 3*H){
+    const pAt = levelAt(S.obs.t);
+    const diff = pAt != null ? S.obs.v - pAt : null;
+    obsHtml = `<div class="kv">Measured <b>${ft(S.obs.v)} ft</b> at ${fmtT(new Date(S.obs.t))}` +
+      (diff != null ? ` · <b>${diff>=0?"+":"−"}${Math.abs(diff).toFixed(1)} ft</b> vs predicted` : "") + `</div>`;
+  }
+  card.innerHTML = `
+    <div class="stName">${esc(st.name)}${st.state?`, ${esc(st.state)}`:""}<span class="pill">${st.type==="R"?"Reference":"Subordinate"} · ${esc(st.id)}</span></div>
+    <div class="nowWrap"><div>
+    <div class="now">
+      <div class="big">${ft(lv)}<small> ft</small></div>
+      <div>
+        <div class="trend" style="color:${rising?"var(--hi)":"var(--lo)"}">${rising?"▲ Rising":"▼ Falling"}</div>
+        ${nx?`<div class="kv">${nx.type==="H"?"High":"Low"} <b>${ft(nx.v)} ft</b> at <b>${fmtT(new Date(nx.t))}</b> (in ${inStr})</div>`:""}
+      </div>
+    </div>
+    ${pct}
+    ${obsHtml}
+    ${(() => { const i = marineIdx(Math.floor(now/H)*H); if(i < 0) return "";
+        const m = S.marine;
+        const lvl = surfLevel({wh: m.wh[i], sp: m.sp[i]});
+        const warn = lvl === "bad" ? "⚠ Surf too high for digging" : lvl === "mid" ? "Surf is up, so watch the waves" : "";
+        S.surfNow = `<div class="surf ${lvl}">
+          <div><div class="l">Surf</div><div class="n h">${m.wh[i].toFixed(1)}<small> ft</small></div></div>
+          <div><div class="l">Swell</div><div class="n">${m.sh[i] != null ? m.sh[i].toFixed(1) : "—"}<small> ft</small></div></div>
+          <div><div class="l">Period</div><div class="n">${m.sp[i] != null ? Math.round(m.sp[i]) : "—"}<small> s</small></div></div>
+          <div><div class="l">From</div><div class="n">${compass(m.sd[i]) || "—"}</div></div>
+          ${warn ? `<div class="warn">${warn}</div>` : ""}</div>`;
+        return ""; })()}
+    ${S.pin ? (() => { const d = distMi(S.pin.lat, S.pin.lng, st.lat, st.lng);
+        return `<div class="kv" style="margin-top:4px">📍 Your spot is <b>${d.toFixed(1)} mi</b> from this station${d > 15 ? ' <span style="color:var(--bad)">(far; treat as approximate)</span>' : ""}</div>`; })() : ""}
+    <div class="kv" style="margin-top:4px">Sunrise ${sun.rise?fmtT(sun.rise):"—"} · Sunset ${sun.set?fmtT(sun.set):"—"}</div>
+    </div>${prev && nx ? gaugeSVG(lv, prev, nx, rising, surfNowObj) : ""}</div>${S.surfNow || ""}`;
+}
+
+function renderChart(){
+  const cv = $("#chart"), dpr = window.devicePixelRatio || 1;
+  const W = cv.clientWidth, Hh = 220;
+  cv.width = W*dpr; cv.height = Hh*dpr; cv.style.height = Hh + "px";
+  const c = cv.getContext("2d"); c.setTransform(dpr,0,0,dpr,0,0); c.clearRect(0,0,W,Hh);
+  const ds = S.dayStats[S.dayOffset]; if(!ds) return;
+  $("#chartTitle").textContent = S.dayOffset === 0 ? `Today · ${fmtMD(ds.d0)}` : `${fmtDay(ds.d0)} · ${fmtMD(ds.d0)}`;
+  const t0 = ds.d0.getTime(), t1 = addDays(ds.d0,1).getTime();
+  const pts = [];
+  for(let t=t0; t<=t1; t+=6*60000){ const v = levelAt(t); if(v!=null) pts.push([t,v]); }
+  if(!pts.length) return;
+  let vmin = Math.min(...pts.map(p=>p[1])), vmax = Math.max(...pts.map(p=>p[1]));
+  vmin = Math.min(vmin, 0) - 0.12*(vmax - Math.min(vmin,0)) - 0.6; vmax = vmax + 1;
+  const L = 30, R = 8, T = 18, B = 22;
+  const X = t => L + (t - t0)/(t1 - t0)*(W - L - R);
+  const Y = v => T + (vmax - v)/(vmax - vmin)*(Hh - T - B);
+  // night shading
+  c.fillStyle = "#00000055";
+  if(ds.sun.rise){ c.fillRect(X(t0), T, X(ds.sun.rise.getTime())-X(t0), Hh-T-B); c.fillRect(X(ds.sun.set.getTime()), T, X(t1)-X(ds.sun.set.getTime()), Hh-T-B); }
+  else if(ds.sun.polar === "night") c.fillRect(X(t0), T, X(t1)-X(t0), Hh-T-B);
+  // grid
+  c.strokeStyle = "#25405f"; c.fillStyle = "#8fa6bf"; c.font = "11px system-ui"; c.lineWidth = 1;
+  const step = (vmax - vmin) > 12 ? 4 : 2;
+  for(let v = Math.ceil(vmin/step)*step; v <= vmax; v += step){
+    c.beginPath(); c.moveTo(L, Y(v)); c.lineTo(W-R, Y(v)); c.stroke();
+    c.textAlign = "right"; c.fillText(v, L-4, Y(v)+4);
+  }
+  c.textAlign = "center";
+  for(let h=0; h<=24; h+=6){ const t = t0 + h*H; c.fillText(h===0||h===24?"12a":h===12?"12p":(h<12?h+"a":(h-12)+"p"), X(t), Hh-6); }
+  // zero line
+  c.strokeStyle = "#f0a35e88"; c.setLineDash([4,4]); c.beginPath(); c.moveTo(L,Y(0)); c.lineTo(W-R,Y(0)); c.stroke(); c.setLineDash([]);
+  // fill + curve
+  const g = c.createLinearGradient(0,T,0,Hh-B); g.addColorStop(0,"#3fa7d6aa"); g.addColorStop(1,"#3fa7d611");
+  c.beginPath(); c.moveTo(X(pts[0][0]), Y(vmin));
+  pts.forEach(p => c.lineTo(X(p[0]), Y(p[1])));
+  c.lineTo(X(pts[pts.length-1][0]), Y(vmin)); c.closePath(); c.fillStyle = g; c.fill();
+  c.beginPath(); pts.forEach((p,i) => i ? c.lineTo(X(p[0]),Y(p[1])) : c.moveTo(X(p[0]),Y(p[1])));
+  c.strokeStyle = "#3fa7d6"; c.lineWidth = 2.5; c.stroke();
+  // extrema labels
+  c.font = "bold 11px system-ui";
+  ds.ex.forEach(e => {
+    const x = X(e.t), y = Y(e.v);
+    c.fillStyle = e.type==="H" ? "#5fd3a6" : "#f0a35e";
+    c.beginPath(); c.arc(x,y,3.5,0,7); c.fill();
+    const lab = `${ft(e.v)} · ${fmtT(new Date(e.t))}`;
+    c.textAlign = x < 60 ? "left" : x > W-60 ? "right" : "center";
+    const ly = e.type==="H" ? y-8 : y+15;
+    if(e.v < 0){
+      const w = c.measureText(lab).width + 8, bx = c.textAlign==="left" ? x-4 : c.textAlign==="right" ? x-w+4 : x-w/2;
+      c.fillStyle = "#ff5c8a"; c.fillRect(bx, ly-11, w, 15);
+      c.fillStyle = "#ff5c8a"; c.beginPath(); c.arc(x,y,5,0,7); c.fill();
+      c.fillStyle = "#fff";
+    }
+    c.fillText(lab, x, ly);
+  });
+  // now marker
+  const now = Date.now();
+  if(now >= t0 && now <= t1){
+    const v = levelAt(now);
+    c.strokeStyle = "#ffd166"; c.lineWidth = 1.5; c.beginPath(); c.moveTo(X(now),T); c.lineTo(X(now),Hh-B); c.stroke();
+    if(v!=null){ c.fillStyle="#ffd166"; c.beginPath(); c.arc(X(now),Y(v),5,0,7); c.fill(); }
+    if(S.obs && now - S.obs.t < 3*H){ c.strokeStyle="#fff"; c.lineWidth=2; c.beginPath(); c.arc(X(S.obs.t),Y(S.obs.v),5,0,7); c.stroke(); }
+  }
+}
+
+function renderDays(){
+  const m = S.mode, box = $("#days");
+  $("#daysTitle").textContent = m === "clam" ? "Best clamming days · next 14" : "Highs & lows · next 14 days";
+  box.innerHTML = S.dayStats.map((d,i) => {
+    const s = m === "clam" ? d.clam : null;
+    const why = m === "clam" ? d.clamWhy : d.tideWhy;
+    const bar = s == null ? "" : `<div class="bar"><i style="width:${s}%;background:${scoreColor(s)}"></i></div>`;
+    return `<div class="day ${i===S.dayOffset?"sel":""}" data-i="${i}" ${s==null?'style="grid-template-columns:62px 1fr"':""}>
+      <div class="d">${i===0?"Today":fmtDay(d.d0)}<small>${fmtMD(d.d0)}</small></div>
+      <div>${bar}<div class="why">${why}</div></div>
+      ${s==null?"":`<div class="score" style="color:${scoreColor(s)}">${s}</div>`}
+    </div>`;
+  }).join("");
+  box.querySelectorAll(".day").forEach(el => el.onclick = () => {
+    S.dayOffset = +el.dataset.i; renderChart(); renderDays();
+    $("#chart").scrollIntoView({behavior:"smooth", block:"center"});
+  });
+  $("#modeNote").innerHTML =
+    m === "clam" ? `Clam score favors minus tides, best in daylight, then evening, and drops as surf builds (forecast surf within 2 hours of the low; long-period swell counts extra). Surf forecast covers about the next 8 days. Razor clam digs only happen on official openings; check <a href="https://wdfw.wa.gov/fishing/shellfish/razor-clams" target="_blank" rel="noopener">WDFW</a> / ODFW and biotoxin closures first.`
+  : "High and low predictions from NOAA for the selected station.";
+}
+
+function renderAll(){ renderNow(); renderChart(); renderDays(); renderUpcoming(); }
+
+/* ---------- map + stations ---------- */
+let map, layer, selMarker;
+function initMap(){
+  map = L.map("map", {preferCanvas:true, zoomControl:true}).setView([46.25, -123.9], 8);
+  const esri = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+  const ocean = L.layerGroup([
+    L.tileLayer(esri + "Ocean/World_Ocean_Base/MapServer/tile/{z}/{y}/{x}", {maxZoom:16, attribution:"Tiles © Esri, GEBCO, NOAA"}),
+    L.tileLayer(esri + "Ocean/World_Ocean_Reference/MapServer/tile/{z}/{y}/{x}", {maxZoom:16})
+  ]);
+  const sat = L.layerGroup([
+    L.tileLayer(esri + "World_Imagery/MapServer/tile/{z}/{y}/{x}", {maxZoom:18, attribution:"Imagery © Esri, Maxar"}),
+    L.tileLayer(esri + "Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {maxZoom:18})
+  ]);
+  const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:18, subdomains:"abcd", attribution:"© OpenStreetMap © CARTO"});
+  const saved = store.get("cd.base", "Ocean");
+  const bases = {Ocean: ocean, Satellite: sat, Dark: dark};
+  (bases[saved] || ocean).addTo(map);
+  L.control.layers(bases, null, {position:"topright"}).addTo(map);
+  map.on("baselayerchange", e => store.set("cd.base", e.name));
+  layer = L.layerGroup().addTo(map);
+  map.on("click", onMapTap);
+}
+function drawStations(){
+  layer.clearLayers();
+  const rend = L.canvas({padding:0.5});
+  S.stations.forEach(st => {
+    const m = L.circleMarker([st.lat, st.lng], {renderer:rend, bubblingMouseEvents:false, radius: st.type==="R"?6:4.5, weight:1.5,
+      color:"#04121e", fillColor: st.type==="R" ? "#5fd3a6" : "#3fa7d6", fillOpacity:0.95});
+    m.on("click", () => selectStation(st, false));
+    m.bindTooltip(st.name, {direction:"top"});
+    m.addTo(layer);
+  });
+}
+/* ---------- tap anywhere -> nearest stations ---------- */
+const INLAND = /river|bay|bridge|slough|creek|inlet|harbor|harbour|lake|channel|marina|dock|estuary|landing|canal|lagoon|sound/i;
+const COAST  = /jetty|entrance|ocean|beach|head|point|cove|coast|reef/i;
+// known inside-the-river/bay stations whose names look coastal
+const INLAND_NAMED = /tongue point|toke point|astoria|longview|vancouver|portland|st\.? helens|skamokawa|wauna|cathlamet|knappton|ilwaco|chinook|hammond|warrenton|skipanon|tillamook|garibaldi|nehalem|yaquina|south beach|newport|depoe|siletz|netarts|bay ocean|willapa|long island|paradise point|nahcotta|oysterville|bay center|nemah|naselle|grays harbor|westport|aberdeen|hoquiam|ocosta|tokeland|puget|olympia|tacoma|seattle/i;
+const isCoast = st => !INLAND_NAMED.test(st.name) && (COAST.test(st.name) || !INLAND.test(st.name));
+function distMi(a1, o1, a2, o2){
+  const r = Math.PI/180, dA = (a2-a1)*r, dO = (o2-o1)*r;
+  const x = Math.sin(dA/2)**2 + Math.cos(a1*r)*Math.cos(a2*r)*Math.sin(dO/2)**2;
+  return 3958.8*2*Math.asin(Math.sqrt(x));
+}
+let pinMarker;
+function onMapTap(e){
+  if(!S.stations.length) return;
+  const {lat, lng} = e.latlng;
+  S.pin = {lat, lng};
+  const near = S.stations.map(st => ({st, d: distMi(lat, lng, st.lat, st.lng)})).sort((a,b) => a.d - b.d);
+  const top = near.slice(0, 4);
+  const coast = near.find(n => isCoast(n.st));
+  const list = coast && !top.includes(coast) ? [coast, ...top.slice(0,3)] : top;
+  const pick = coast || near[0];
+  if(pinMarker) pinMarker.remove();
+  pinMarker = L.circleMarker([lat, lng], {radius:6, color:"#fff", weight:2, fillColor:"#ffd166", fillOpacity:1}).addTo(map);
+  S.nearList = list; S.nearPick = pick;
+  renderNear();
+  $("#nearCard").scrollIntoView({behavior:"smooth", block:"nearest"});
+}
+function renderNear(){
+  const box = $("#nearCard"), list = S.nearList;
+  if(!list){ box.style.display = "none"; return; }
+  const pick = S.nearPick;
+  box.style.display = "";
+  box.innerHTML = `<div class="row"><b style="flex:1">Nearest stations to your pin</b><button id="nearX" style="background:none;border:0;color:var(--mute);font-size:18px">✕</button></div>
+    <div class="near">` + list.map((n,i) => `<button data-i="${i}" class="${S.station && S.station.id===n.st.id ? "cur":""}">
+      <span>${n===pick?"⭐ ":""}${esc(n.st.name)}</span>
+      <small>${n.d.toFixed(1)} mi <span class="tag ${isCoast(n.st)?"":"in"}">${isCoast(n.st)?"coast":"river/bay"}</span></small></button>`).join("") + `</div>` +
+    (pick.d > 15 ? `<div class="note" style="color:var(--bad)">Closest open-coast station is ${pick.d.toFixed(0)} mi away, so treat times and heights as approximate.</div>` : "");
+  box.querySelectorAll(".near button").forEach(b => b.onclick = () => selectStation(list[+b.dataset.i].st, false));
+  $("#nearX").onclick = () => { S.nearList = null; S.pin = null; if(pinMarker) pinMarker.remove(); renderNear(); if(S.ex.length) renderNow(); };
+}
+
+async function loadStations(){
+  const cached = store.get("cd.stations", null);
+  if(cached && Date.now() - cached.at < 30*D){ S.stations = cached.list; return; }
+  const j = await getJSON(MD);
+  S.stations = (j.stations || []).map(s => ({id:String(s.id), name:s.name, state:s.state||"", lat:+s.lat, lng:+s.lng, type:s.type||"S"}))
+    .filter(s => isFinite(s.lat) && isFinite(s.lng));
+  store.set("cd.stations", {at: Date.now(), list: S.stations});
+}
+
+async function selectStation(st, fly=true){
+  S.station = st; S.dayOffset = 0; store.set("cd.station", st.id);
+  $("#nowCard").innerHTML = `<div class="stName">${esc(st.name)}</div><div class="stMeta">Loading tides…</div>`;
+  if(selMarker) selMarker.remove();
+  selMarker = L.circleMarker([st.lat, st.lng], {radius:11, color:"#ffd166", weight:3, fill:false}).addTo(map);
+  if(fly) map.setView([st.lat, st.lng], Math.max(map.getZoom(), 10));
+  try{
+    await loadTides(st);
+    computeDays(st);
+    renderAll();
+    renderNear();
+  }catch(e){
+    $("#nowCard").innerHTML = `<div class="stName">${esc(st.name)}</div><div class="err">Couldn't load tides: ${esc(e.message)}</div>`;
+  }
+}
+
+/* ---------- search ---------- */
+function setupSearch(){
+  const q = $("#q"), res = $("#results");
+  q.addEventListener("input", () => {
+    const s = q.value.trim().toLowerCase();
+    if(s.length < 2){ res.style.display = "none"; return; }
+    const al = BEACHES.filter(b => b.keys.some(k => k.includes(s) || s.includes(k))).map(b => {
+      let st = S.stations.find(x => x.id === b.id);
+      if(!st){ st = {id:b.id, name:b.name, state:"OR", lat:b.lat, lng:b.lng, type:"S"}; S.stations.push(st); }
+      return {st, label:b.label};
+    });
+    const hits = S.stations.filter(st => st.name.toLowerCase().includes(s) || st.id === s || (st.state||"").toLowerCase() === s).slice(0, 30);
+    if(!hits.length && /^\d{7}$/.test(s)){ const st = {id:s, name:"Station "+s, state:"", lat:46.21, lng:-123.77, type:"S"}; S.stations.push(st); hits.push(st); }
+    const alHtml = al.map(a => `<div data-id="${a.st.id}">⭐ ${esc(a.label)} <small>uses ${esc(a.st.name)} · ${a.st.id}</small></div>`).join("");
+    res.innerHTML = alHtml + (hits.length ? hits.map(st =>`<div data-id="${st.id}">${esc(st.name)} <small>${esc(st.state)} · ${st.id}</small></div>`).join("")
+                                : (al.length ? "" : `<div><small>No matches</small></div>`));
+    res.style.display = "block";
+    res.querySelectorAll("[data-id]").forEach(el => el.onclick = () => {
+      const st = S.stations.find(x => x.id === el.dataset.id);
+      res.style.display = "none"; q.value = ""; q.blur(); selectStation(st);
+    });
+  });
+  document.addEventListener("click", e => { if(!e.target.closest(".search")) res.style.display = "none"; });
+}
+
+/* ---------- controls ---------- */
+function setMode(m){
+  S.mode = m; store.set("cd.mode", m);
+  document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
+  if(S.dayStats.length){ renderDays(); renderUpcoming(); }
+}
+document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => setMode(b.dataset.m));
+$("#prevDay").onclick = () => { if(S.dayOffset > 0){ S.dayOffset--; renderChart(); renderDays(); } };
+$("#nextDay").onclick = () => { if(S.dayOffset < DAYS_AHEAD-1){ S.dayOffset++; renderChart(); renderDays(); } };
+$("#mapToggle").onclick = () => {
+  const m = $("#map"), hidden = m.style.display === "none";
+  m.style.display = hidden ? "" : "none";
+  $("#mapToggle").textContent = hidden ? "Hide map" : "Show map";
+  $("#mapWrap").style.minHeight = hidden ? "" : "36px";
+  if(hidden) map.invalidateSize();
+};
+window.addEventListener("resize", () => S.dayStats.length && renderChart());
+setInterval(() => { if(S.station && S.ex.length){ renderNow(); if(S.dayOffset===0) renderChart(); } }, 60e3);
+
+/* ---------- boot ---------- */
+(async function boot(){
+  setMode(S.mode);
+  if(typeof L === "undefined"){ $("#nowCard").innerHTML = `<div class="err">Map library didn't load. Check your connection.</div>`; return; }
+  initMap(); setupSearch();
+  try{
+    await loadStations();
+    drawStations();
+  }catch(e){
+    $("#nowCard").innerHTML = `<div class="err">Couldn't load NOAA station list (${esc(e.message)}). You can still type a station ID in search.</div>`;
+  }
+  const want = store.get("cd.station", DEFAULT_STATION);
+  const st = S.stations.find(s => s.id === want) || S.stations.find(s => s.id === DEFAULT_STATION)
+          || {id: want, name: "Station " + want, state:"", lat:46.21, lng:-123.77, type:"S"};
+  selectStation(st);
+})();
+</script>
+</body>
+</html>
