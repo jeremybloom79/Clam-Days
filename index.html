@@ -21,7 +21,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
-header{position:sticky;top:0;z-index:1000;background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));border-bottom:1px solid var(--line)}
+header{position:relative;z-index:1000;background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));border-bottom:1px solid var(--line)}
 .row{display:flex;gap:8px;align-items:center}
 h1{font-size:18px;margin:0;flex:1;letter-spacing:.3px}
 h1 span{color:var(--water)}
@@ -36,7 +36,6 @@ h1 span{color:var(--water)}
 main{max-width:900px;margin:0 auto;padding:10px calc(12px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left))}
 #mapWrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
 #map{height:38vh;min-height:240px;background:#0e2033}
-#mapToggle{position:absolute;right:8px;bottom:8px;z-index:500;border:0;border-radius:8px;padding:6px 10px;background:#000a;color:#fff;font-size:12px}
 .card{background:var(--panel);border-radius:14px;padding:12px 14px;margin-top:10px;border:1px solid var(--line)}
 .stName{font-size:17px;font-weight:700}
 .stMeta{color:var(--mute);font-size:12px}
@@ -58,6 +57,13 @@ canvas{width:100%;display:block}
 .day .why b{color:var(--ink);font-weight:600}
 .bar{height:6px;border-radius:3px;background:#0005;margin-bottom:4px;overflow:hidden}
 .bar i{display:block;height:100%}
+.locbar{margin-top:8px}
+.locL{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--mute)}
+#locName{font-size:19px;font-weight:800;line-height:1.2}
+.locbtns{display:flex;gap:6px;margin-top:8px}
+.locbtns button{flex:1;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 4px;font-size:13px;font-weight:600;white-space:nowrap}
+.locbtns button.on{background:var(--water);color:#04121e;border-color:var(--water)}
+.xbtn{border:0;background:var(--panel2);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:13px}
 .minus{background:#ff5c8a;color:#fff;font-weight:700;border-radius:5px;padding:0 5px;white-space:nowrap}
 .minus b{color:#fff}
 .near{display:flex;flex-direction:column;gap:6px;margin-top:6px}
@@ -122,24 +128,38 @@ canvas{width:100%;display:block}
       <button data-m="tide">Tides</button>
     </div>
   </div>
-  <div class="search">
+  <div class="locbar">
+    <div class="locL">📍 Location</div>
+    <div id="locName">Loading…</div>
+    <div id="locMeta" class="kv"></div>
+  </div>
+  <div class="locbtns">
+    <button id="btnHere">◎ Current location</button>
+    <button id="btnSearch">🔍 Search</button>
+    <button id="btnMap">🗺️ Map</button>
+  </div>
+  <div class="search" id="searchBox" style="display:none">
     <input id="q" placeholder="Search tide stations (e.g. Long Beach, Westport, Seaside)" autocomplete="off">
     <div id="results"></div>
   </div>
+  <div id="locStatus" class="kv" style="display:none;margin-top:6px"></div>
 </header>
 
 <main>
-  <div class="card" id="upCard" style="display:none;margin-top:0;margin-bottom:10px">
+  <div id="mapPanel" style="display:none;margin-bottom:10px">
+    <div class="row" style="margin-bottom:6px"><div class="note" style="margin:0;flex:1">Tap a station dot to pick it, or tap anywhere to find the nearest stations.</div>
+      <button id="mapClose" class="xbtn">Close map ✕</button></div>
+    <div id="mapWrap"><div id="map"></div></div>
+  </div>
+
+  <div class="card" id="nearCard" style="display:none;margin-top:0;margin-bottom:10px"></div>
+
+  <div class="card" id="nowCard" style="margin-top:0"><div class="stMeta">Loading tides…</div></div>
+
+  <div class="card" id="upCard" style="display:none">
     <div class="row"><div style="font-weight:700;flex:1">Upcoming good clamming tides</div><div class="kv">next 45 days · swipe ›</div></div>
     <div class="upRow" id="upList"></div>
   </div>
-
-  <div class="note" style="margin:0 0 6px">Tap anywhere on the map to find the nearest stations to that spot.</div>
-  <div id="mapWrap"><div id="map"></div><button id="mapToggle">Hide map</button></div>
-
-  <div class="card" id="nearCard" style="display:none"></div>
-
-  <div class="card" id="nowCard"><div class="stMeta">Loading stations…</div></div>
 
   <div class="card">
     <div class="dayhdr">
@@ -448,7 +468,7 @@ function renderNow(){
   const st = S.station, now = Date.now();
   const lv = levelAt(now), nx = nextExtremum(now);
   const card = $("#nowCard");
-  if(lv == null){ card.innerHTML = `<div class="stName">${esc(st.name)}</div><div class="err">No prediction data for this station.</div>`; return; }
+  if(lv == null){ card.innerHTML = `<div class="err">No prediction data for this station.</div>`; return; }
   const rising = nx && nx.type === "H";
   const prev = [...S.ex].reverse().find(e => e.t <= now);
   S.surfNow = "";
@@ -468,7 +488,6 @@ function renderNow(){
       (diff != null ? ` · <b>${diff>=0?"+":"−"}${Math.abs(diff).toFixed(1)} ft</b> vs predicted` : "") + `</div>`;
   }
   card.innerHTML = `
-    <div class="stName">${esc(st.name)}${st.state?`, ${esc(st.state)}`:""}<span class="pill">${st.type==="R"?"Reference":"Subordinate"} · ${esc(st.id)}</span></div>
     <div class="nowWrap"><div>
     <div class="now">
       <div class="big">${ft(lv)}<small> ft</small></div>
@@ -491,7 +510,7 @@ function renderNow(){
           ${warn ? `<div class="warn">${warn}</div>` : ""}</div>`;
         return ""; })()}
     ${S.pin ? (() => { const d = distMi(S.pin.lat, S.pin.lng, st.lat, st.lng);
-        return `<div class="kv" style="margin-top:4px">📍 Your spot is <b>${d.toFixed(1)} mi</b> from this station${d > 15 ? ' <span style="color:var(--bad)">(far; treat as approximate)</span>' : ""}</div>`; })() : ""}
+        return `<div class="kv" style="margin-top:4px">📍 ${S.pinLabel === "you" ? "You are" : "Your pin is"} <b>${d.toFixed(1)} mi</b> from this station${d > 15 ? ' <span style="color:var(--bad)">(far; treat as approximate)</span>' : ""}</div>`; })() : ""}
     <div class="kv" style="margin-top:4px">Sunrise ${sun.rise?fmtT(sun.rise):"—"} · Sunset ${sun.set?fmtT(sun.set):"—"}</div>
     </div>${prev && nx ? gaugeSVG(lv, prev, nx, rising, surfNowObj) : ""}</div>${S.surfNow || ""}`;
 }
@@ -613,7 +632,7 @@ function drawStations(){
   S.stations.forEach(st => {
     const m = L.circleMarker([st.lat, st.lng], {renderer:rend, bubblingMouseEvents:false, radius: st.type==="R"?6:4.5, weight:1.5,
       color:"#04121e", fillColor: st.type==="R" ? "#5fd3a6" : "#3fa7d6", fillOpacity:0.95});
-    m.on("click", () => selectStation(st, false));
+    m.on("click", () => { selectStation(st, false); showMap(false); });
     m.bindTooltip(st.name, {direction:"top"});
     m.addTo(layer);
   });
@@ -630,9 +649,9 @@ function distMi(a1, o1, a2, o2){
   return 3958.8*2*Math.asin(Math.sqrt(x));
 }
 let pinMarker;
-function onMapTap(e){
+function onMapTap(e){ pinAt(e.latlng.lat, e.latlng.lng, false); }
+function pinAt(lat, lng, autoPick, label){
   if(!S.stations.length) return;
-  const {lat, lng} = e.latlng;
   S.pin = {lat, lng};
   const near = S.stations.map(st => ({st, d: distMi(lat, lng, st.lat, st.lng)})).sort((a,b) => a.d - b.d);
   const top = near.slice(0, 4);
@@ -640,23 +659,23 @@ function onMapTap(e){
   const list = coast && !top.includes(coast) ? [coast, ...top.slice(0,3)] : top;
   const pick = coast || near[0];
   if(pinMarker) pinMarker.remove();
-  pinMarker = L.circleMarker([lat, lng], {radius:6, color:"#fff", weight:2, fillColor:"#ffd166", fillOpacity:1}).addTo(map);
-  S.nearList = list; S.nearPick = pick;
-  renderNear();
-  $("#nearCard").scrollIntoView({behavior:"smooth", block:"nearest"});
+  if(map) pinMarker = L.circleMarker([lat, lng], {radius:6, color:"#fff", weight:2, fillColor:"#ffd166", fillOpacity:1}).addTo(map);
+  S.nearList = list; S.nearPick = pick; S.pinLabel = label || "your pin";
+  if(autoPick) selectStation(pick.st, false); else renderNear();
+  renderLoc();
 }
 function renderNear(){
   const box = $("#nearCard"), list = S.nearList;
   if(!list){ box.style.display = "none"; return; }
   const pick = S.nearPick;
   box.style.display = "";
-  box.innerHTML = `<div class="row"><b style="flex:1">Nearest stations to your pin</b><button id="nearX" style="background:none;border:0;color:var(--mute);font-size:18px">✕</button></div>
+  box.innerHTML = `<div class="row"><b style="flex:1">Nearest stations to ${esc(S.pinLabel || "your pin")}</b><button id="nearX" style="background:none;border:0;color:var(--mute);font-size:18px">✕</button></div>
     <div class="near">` + list.map((n,i) => `<button data-i="${i}" class="${S.station && S.station.id===n.st.id ? "cur":""}">
       <span>${n===pick?"⭐ ":""}${esc(n.st.name)}</span>
       <small>${n.d.toFixed(1)} mi <span class="tag ${isCoast(n.st)?"":"in"}">${isCoast(n.st)?"coast":"river/bay"}</span></small></button>`).join("") + `</div>` +
     (pick.d > 15 ? `<div class="note" style="color:var(--bad)">Closest open-coast station is ${pick.d.toFixed(0)} mi away, so treat times and heights as approximate.</div>` : "");
-  box.querySelectorAll(".near button").forEach(b => b.onclick = () => selectStation(list[+b.dataset.i].st, false));
-  $("#nearX").onclick = () => { S.nearList = null; S.pin = null; if(pinMarker) pinMarker.remove(); renderNear(); if(S.ex.length) renderNow(); };
+  box.querySelectorAll(".near button").forEach(b => b.onclick = () => { selectStation(list[+b.dataset.i].st, false); showMap(false); });
+  $("#nearX").onclick = () => { S.nearList = null; S.pin = null; if(pinMarker) pinMarker.remove(); renderNear(); renderLoc(); if(S.ex.length) renderNow(); };
 }
 
 async function loadStations(){
@@ -670,17 +689,20 @@ async function loadStations(){
 
 async function selectStation(st, fly=true){
   S.station = st; S.dayOffset = 0; store.set("cd.station", st.id);
-  $("#nowCard").innerHTML = `<div class="stName">${esc(st.name)}</div><div class="stMeta">Loading tides…</div>`;
-  if(selMarker) selMarker.remove();
-  selMarker = L.circleMarker([st.lat, st.lng], {radius:11, color:"#ffd166", weight:3, fill:false}).addTo(map);
-  if(fly) map.setView([st.lat, st.lng], Math.max(map.getZoom(), 10));
+  renderLoc();
+  $("#nowCard").innerHTML = `<div class="stMeta">Loading tides…</div>`;
+  if(map){
+    if(selMarker) selMarker.remove();
+    selMarker = L.circleMarker([st.lat, st.lng], {radius:11, color:"#ffd166", weight:3, fill:false}).addTo(map);
+    if(fly) map.setView([st.lat, st.lng], Math.max(map.getZoom(), 10));
+  }
   try{
     await loadTides(st);
     computeDays(st);
     renderAll();
     renderNear();
   }catch(e){
-    $("#nowCard").innerHTML = `<div class="stName">${esc(st.name)}</div><div class="err">Couldn't load tides: ${esc(e.message)}</div>`;
+    $("#nowCard").innerHTML = `<div class="err">Couldn't load tides: ${esc(e.message)}</div>`;
   }
 }
 
@@ -703,7 +725,7 @@ function setupSearch(){
     res.style.display = "block";
     res.querySelectorAll("[data-id]").forEach(el => el.onclick = () => {
       const st = S.stations.find(x => x.id === el.dataset.id);
-      res.style.display = "none"; q.value = ""; q.blur(); selectStation(st);
+      q.blur(); showSearch(false); selectStation(st);
     });
   });
   document.addEventListener("click", e => { if(!e.target.closest(".search")) res.style.display = "none"; });
@@ -718,12 +740,42 @@ function setMode(m){
 document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => setMode(b.dataset.m));
 $("#prevDay").onclick = () => { if(S.dayOffset > 0){ S.dayOffset--; renderChart(); renderDays(); } };
 $("#nextDay").onclick = () => { if(S.dayOffset < DAYS_AHEAD-1){ S.dayOffset++; renderChart(); renderDays(); } };
-$("#mapToggle").onclick = () => {
-  const m = $("#map"), hidden = m.style.display === "none";
-  m.style.display = hidden ? "" : "none";
-  $("#mapToggle").textContent = hidden ? "Hide map" : "Show map";
-  $("#mapWrap").style.minHeight = hidden ? "" : "36px";
-  if(hidden) map.invalidateSize();
+/* ---------- location bar ---------- */
+function renderLoc(){
+  const st = S.station; if(!st) return;
+  $("#locName").textContent = st.name + (st.state ? ", " + st.state : "");
+  let meta = `${st.type==="R" ? "Reference" : "Subordinate"} station ${st.id} · ${isCoast(st) ? "open coast" : "river / bay"}`;
+  if(S.pin) meta += ` · ${distMi(S.pin.lat, S.pin.lng, st.lat, st.lng).toFixed(1)} mi from ${S.pinLabel === "you" ? "you" : "your pin"}`;
+  $("#locMeta").textContent = meta;
+}
+function showMap(on){
+  $("#mapPanel").style.display = on ? "" : "none";
+  $("#btnMap").classList.toggle("on", on);
+  if(on && map){
+    map.invalidateSize();
+    if(S.station) map.setView([S.station.lat, S.station.lng], Math.max(map.getZoom(), 9));
+    $("#mapPanel").scrollIntoView({behavior:"smooth", block:"start"});
+  }
+}
+function showSearch(on){
+  $("#searchBox").style.display = on ? "" : "none";
+  $("#btnSearch").classList.toggle("on", on);
+  if(on) setTimeout(() => $("#q").focus(), 50); else { $("#q").value = ""; $("#results").style.display = "none"; }
+}
+function status(msg){ const el = $("#locStatus"); el.textContent = msg || ""; el.style.display = msg ? "" : "none"; }
+$("#btnMap").onclick = () => showMap($("#mapPanel").style.display === "none");
+$("#mapClose").onclick = () => showMap(false);
+$("#btnSearch").onclick = () => showSearch($("#searchBox").style.display === "none");
+$("#btnHere").onclick = () => {
+  if(!navigator.geolocation){ status("This browser can't share your location."); return; }
+  status("Finding your location…");
+  navigator.geolocation.getCurrentPosition(pos => {
+    status("");
+    pinAt(pos.coords.latitude, pos.coords.longitude, true, "you");
+  }, err => {
+    status(err.code === 1 ? "Location permission was denied. Allow location for this site in Settings, or use Search or Map." :
+           "Couldn't get your location. Try again, or use Search or Map.");
+  }, {enableHighAccuracy:false, timeout:15000, maximumAge:300000});
 };
 window.addEventListener("resize", () => S.dayStats.length && renderChart());
 setInterval(() => { if(S.station && S.ex.length){ renderNow(); if(S.dayOffset===0) renderChart(); } }, 60e3);
