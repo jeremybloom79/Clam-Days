@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Clam Days">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1724">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <title>Clam Days — Tides</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -13,7 +21,7 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
-header{position:sticky;top:0;z-index:1000;background:var(--bg);padding:10px 12px 8px;border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:1000;background:var(--bg);padding:calc(10px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right)) 8px calc(12px + env(safe-area-inset-left));border-bottom:1px solid var(--line)}
 .row{display:flex;gap:8px;align-items:center}
 h1{font-size:18px;margin:0;flex:1;letter-spacing:.3px}
 h1 span{color:var(--water)}
@@ -25,7 +33,7 @@ h1 span{color:var(--water)}
 #results{position:absolute;left:0;right:0;top:42px;background:var(--panel2);border-radius:10px;max-height:50vh;overflow:auto;display:none;box-shadow:0 8px 24px #0008}
 #results div{padding:9px 12px;border-bottom:1px solid var(--line);cursor:pointer}
 #results div small{color:var(--mute)}
-main{max-width:900px;margin:0 auto;padding:10px 12px 40px}
+main{max-width:900px;margin:0 auto;padding:10px calc(12px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left))}
 #mapWrap{position:relative;border-radius:14px;overflow:hidden;border:1px solid var(--line)}
 #map{height:38vh;min-height:240px;background:#0e2033}
 #mapToggle{position:absolute;right:8px;bottom:8px;z-index:500;border:0;border-radius:8px;padding:6px 10px;background:#000a;color:#fff;font-size:12px}
