@@ -64,6 +64,17 @@ canvas{width:100%;display:block}
 .locbtns button{flex:1;border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:10px;padding:8px 4px;font-size:13px;font-weight:600;white-space:nowrap}
 .locbtns button.on{background:var(--water);color:#04121e;border-color:var(--water)}
 .xbtn{border:0;background:var(--panel2);color:var(--ink);border-radius:8px;padding:6px 10px;font-size:13px}
+.bestList{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.best{display:grid;grid-template-columns:34px 1fr 46px;gap:10px;align-items:center;padding:10px;border-radius:12px;background:var(--panel2);border:1px solid var(--line)}
+.best.go{cursor:pointer}
+.best.r1{border-color:var(--accent);background:linear-gradient(90deg,#ffd16618,var(--panel2))}
+.best .rank{font-size:24px;text-align:center}
+.best .when{font-weight:800;font-size:15px}
+.best .when small{color:var(--mute);font-weight:600}
+.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:5px}
+.chip{font-size:12px;font-weight:700;padding:2px 7px;border-radius:7px;white-space:nowrap}
+.chip.ok{background:#5fd3a62b;color:var(--hi)} .chip.mid{background:#ffd16630;color:var(--accent)} .chip.bad{background:#e2675c33;color:#ff8f86}
+.best .score{font-size:22px}
 .minus{background:#ff5c8a;color:#fff;font-weight:700;border-radius:5px;padding:0 5px;white-space:nowrap}
 .minus b{color:#fff}
 .near{display:flex;flex-direction:column;gap:6px;margin-top:6px}
@@ -155,6 +166,12 @@ canvas{width:100%;display:block}
   <div class="card" id="nearCard" style="display:none;margin-top:0;margin-bottom:10px"></div>
 
   <div class="card" id="nowCard" style="margin-top:0"><div class="stMeta">Loading tides…</div></div>
+
+  <div class="card" id="bestCard" style="display:none">
+    <div class="row"><div style="font-weight:800;font-size:16px;flex:1">🏆 Best days ahead</div><div class="kv">minus tide · daylight · low swell</div></div>
+    <div id="bestList" class="bestList"></div>
+    <div id="bestLater" class="kv" style="margin-top:8px"></div>
+  </div>
 
   <div class="card" id="upCard" style="display:none">
     <div class="row"><div style="font-weight:700;flex:1">Upcoming good clamming tides</div><div class="kv">next 45 days · swipe ›</div></div>
@@ -340,6 +357,76 @@ function lowScore(L, sun, dayEnd){
   return {L, tw, surf, sf, val: depth*(0.35 + 0.65*timing)*sf};
 }
 const LIST_DAYS = 45;
+
+/* ---------- best days: needs a minus tide, daylight and low swell ---------- */
+function swellWindow(t0, t1){ // biggest swell in a time window
+  let best = null;
+  for(let t = t0; t <= t1; t += H){
+    const i = marineIdx(t); if(i < 0 || S.marine.sh[i] == null) continue;
+    if(!best || S.marine.sh[i] > best.sh) best = {sh: S.marine.sh[i], sp: S.marine.sp[i], sd: S.marine.sd[i], wh: S.marine.wh[i]};
+  }
+  return best;
+}
+function swellFactor(s){ // 1 = flat; long-period swell counts extra because it runs up the beach
+  const eff = s.sh*(s.sp >= 13 ? 1.25 : s.sp >= 10 ? 1.1 : 1);
+  return eff <= 3 ? 1 : eff >= 9 ? 0.1 : 1 - 0.9*(eff - 3)/6;
+}
+function bestDays(){
+  const st = S.station, now = Date.now(), today = startOfDay(new Date());
+  const scored = [], later = [];
+  for(let i = 0; i < LIST_DAYS; i++){
+    const d0 = addDays(today, i), t0 = d0.getTime(), t1 = addDays(d0, 1).getTime();
+    const sun = sunTimes(d0, st.lat, st.lng);
+    let top = null;
+    for(const L of S.ex){
+      if(L.type !== "L" || L.t < t0 || L.t >= t1 || L.t < now - H || L.v > 0) continue;
+      const depth = clamp((0.3 - L.v)/2.3, 0, 1);                  // 0 ft -> ~0.13, -2 ft -> 1
+      const light = isDaylight(L.t, sun) ? 1 : (sun.set && L.t <= sun.set.getTime() + H ? 0.5 : 0);
+      if(!light) continue;
+      const sw = swellWindow(L.t - 2*H, L.t + 2*H);
+      const r = {L, d0, off:i, depth, light, sw, sf: sw ? swellFactor(sw) : null};
+      r.val = sw ? depth*light*r.sf : depth*light;
+      if(!top || r.val > top.val) top = r;
+    }
+    if(!top) continue;
+    if(top.sw){ top.score = Math.round(100*top.val); scored.push(top); }
+    else later.push(top);
+  }
+  scored.sort((a,b) => b.score - a.score);
+  return {scored, later};
+}
+function renderBest(){
+  const card = $("#bestCard");
+  if(S.mode !== "clam" || !S.station){ card.style.display = "none"; return; }
+  card.style.display = "";
+  const {scored, later} = bestDays();
+  const good = scored.filter(r => r.score >= 30).slice(0, 3);
+  const medal = ["🥇","🥈","🥉"];
+  const chip = (cls, txt) => `<span class="chip ${cls}">${txt}</span>`;
+  $("#bestList").innerHTML = good.length ? good.map((r, k) => {
+    const d = new Date(r.L.t);
+    const tideC = chip(r.L.v <= -1 ? "ok" : "mid", `${r.L.v <= -1 ? "✓" : "~"} Minus tide ${ft(r.L.v)} ft`);
+    const lightC = chip(r.light === 1 ? "ok" : "mid", r.light === 1 ? "✓ Daylight" : "~ Dusk");
+    const swC = chip(r.sf >= 0.8 ? "ok" : r.sf >= 0.45 ? "mid" : "bad",
+      `${r.sf >= 0.8 ? "✓" : r.sf >= 0.45 ? "~" : "✗"} Swell ${r.sw.sh.toFixed(1)} ft${r.sw.sp ? " @ " + Math.round(r.sw.sp) + "s" : ""}`);
+    return `<div class="best ${k === 0 ? "r1" : ""} ${r.off < DAYS_AHEAD ? "go" : ""}" data-off="${r.off}">
+      <div class="rank">${medal[k]}</div>
+      <div><div class="when">${r.off === 0 ? "Today" : r.off === 1 ? "Tomorrow" : fmtDay(d)} <small>${fmtMD(d)} · low ${fmtT(d)}</small></div>
+        <div class="chips">${tideC}${lightC}${swC}</div></div>
+      <div class="score" style="color:${scoreColor(r.score)}">${r.score}</div></div>`;
+  }).join("") : (scored.length
+      ? `<div class="kv">No day in the swell forecast has all three. The closest is <b>${fmtDay(new Date(scored[0].L.t))} ${fmtMD(new Date(scored[0].L.t))}</b> (score ${scored[0].score}).</div>`
+      : `<div class="kv">No daylight minus tides in the swell forecast window at this station.</div>`);
+  $("#bestList").querySelectorAll(".best.go").forEach(el => el.onclick = () => {
+    S.dayOffset = +el.dataset.off; renderChart(); renderDays();
+    $("#chart").scrollIntoView({behavior:"smooth", block:"center"});
+  });
+  const lt = later.sort((a,b) => b.val - a.val).slice(0, 4).sort((a,b) => a.L.t - b.L.t);
+  $("#bestLater").innerHTML = lt.length
+    ? `Later, once the swell forecast reaches them: ` + lt.map(r => { const d = new Date(r.L.t);
+        return `<b>${fmtDay(d)} ${fmtMD(d)}</b> <span class="minus">${ft(r.L.v)}</span> ${fmtT(d)}${r.light < 1 ? " (dusk)" : ""}`; }).join(" · ")
+    : "";
+}
 function renderUpcoming(){
   const card = $("#upCard");
   if(S.mode !== "clam" || !S.station){ card.style.display = "none"; return; }
@@ -602,7 +689,7 @@ function renderDays(){
   : "High and low predictions from NOAA for the selected station.";
 }
 
-function renderAll(){ renderNow(); renderChart(); renderDays(); renderUpcoming(); }
+function renderAll(){ renderNow(); renderBest(); renderChart(); renderDays(); renderUpcoming(); }
 
 /* ---------- map + stations ---------- */
 let map, layer, selMarker;
@@ -735,7 +822,7 @@ function setupSearch(){
 function setMode(m){
   S.mode = m; store.set("cd.mode", m);
   document.querySelectorAll("#modeSeg button").forEach(b => b.classList.toggle("on", b.dataset.m === m));
-  if(S.dayStats.length){ renderDays(); renderUpcoming(); }
+  if(S.dayStats.length){ renderBest(); renderDays(); renderUpcoming(); }
 }
 document.querySelectorAll("#modeSeg button").forEach(b => b.onclick = () => setMode(b.dataset.m));
 $("#prevDay").onclick = () => { if(S.dayOffset > 0){ S.dayOffset--; renderChart(); renderDays(); } };
