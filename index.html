@@ -194,7 +194,7 @@ canvas{width:100%;display:block}
     <div class="note" id="modeNote"></div>
   </div>
 
-  <div class="note" style="text-align:center;opacity:.7">Clam Days · version 2026-11-12b (Best days)</div>
+  <div class="note" style="text-align:center;opacity:.7">Clam Days · version 2026-11-12c (twilight fix)</div>
   <div class="note">Surf/swell: Open-Meteo Marine forecast (open-meteo.com), offshore model, so the surf on the beach can differ. Tide data: NOAA CO-OPS (tidesandcurrents.noaa.gov). The curve between highs and lows is cosine-interpolated from NOAA's high/low predictions. This is a planning aid and doesn't replace official tables, openings, or bar reports.</div>
 </main>
 
@@ -266,7 +266,9 @@ function sunTimes(localDate, lat, lng){
   if(cw > 1) return {rise:null, set:null, polar:"night"};
   if(cw < -1) return {rise:null, set:null, polar:"day"};
   const w = Math.acos(cw)/r;
-  return {rise: toDate(Jt - w/360), set: toDate(Jt + w/360)};
+  const cwC = (Math.sin(-6*r) - Math.sin(lat*r)*sd)/(Math.cos(lat*r)*cd);  // civil twilight: sun 6° below horizon
+  const wc = Math.acos(clamp(cwC, -1, 1))/r;
+  return {rise: toDate(Jt - w/360), set: toDate(Jt + w/360), dawn: toDate(Jt - wc/360), dusk: toDate(Jt + wc/360)};
 }
 function isDaylight(t, sun, marginH=0){
   if(sun.polar === "day") return true;
@@ -382,10 +384,11 @@ function bestDays(){
     for(const L of S.ex){
       if(L.type !== "L" || L.t < t0 || L.t >= t1 || L.t < now - H || L.v > 0) continue;
       const depth = clamp((0.3 - L.v)/2.3, 0, 1);                  // 0 ft -> ~0.13, -2 ft -> 1
-      const light = isDaylight(L.t, sun) ? 1 : (sun.set && L.t <= sun.set.getTime() + H ? 0.5 : 0);
+      // full credit between sunrise and sunset; half credit in civil twilight (still light enough to dig); none after dark
+      const light = isDaylight(L.t, sun) ? 1 : (sun.dusk && L.t <= sun.dusk.getTime() ? 0.5 : 0);
       if(!light) continue;
       const sw = swellWindow(L.t - 2*H, L.t + 2*H);
-      const r = {L, d0, off:i, depth, light, sw, sf: sw ? swellFactor(sw) : null};
+      const r = {L, d0, off:i, depth, light, sw, sun, sf: sw ? swellFactor(sw) : null};
       r.val = sw ? depth*light*r.sf : depth*light;
       if(!top || r.val > top.val) top = r;
     }
@@ -407,7 +410,7 @@ function renderBest(){
   $("#bestList").innerHTML = good.length ? good.map((r, k) => {
     const d = new Date(r.L.t);
     const tideC = chip(r.L.v <= -1 ? "ok" : "mid", `${r.L.v <= -1 ? "✓" : "~"} Minus tide ${ft(r.L.v)} ft`);
-    const lightC = chip(r.light === 1 ? "ok" : "mid", r.light === 1 ? "✓ Daylight" : "~ Dusk");
+    const lightC = chip(r.light === 1 ? "ok" : "mid", (r.light === 1 ? "✓ Daylight" : "~ Twilight") + (r.sun.set ? ` · sunset ${fmtT(r.sun.set)}` : ""));
     const swC = chip(r.sf >= 0.8 ? "ok" : r.sf >= 0.45 ? "mid" : "bad",
       `${r.sf >= 0.8 ? "✓" : r.sf >= 0.45 ? "~" : "✗"} Swell ${r.sw.sh.toFixed(1)} ft${r.sw.sp ? " @ " + Math.round(r.sw.sp) + "s" : ""}`);
     return `<div class="best ${k === 0 ? "r1" : ""} ${r.off < DAYS_AHEAD ? "go" : ""}" data-off="${r.off}">
@@ -425,7 +428,7 @@ function renderBest(){
   const lt = later.sort((a,b) => b.val - a.val).slice(0, 4).sort((a,b) => a.L.t - b.L.t);
   $("#bestLater").innerHTML = lt.length
     ? `Later, once the swell forecast reaches them: ` + lt.map(r => { const d = new Date(r.L.t);
-        return `<b>${fmtDay(d)} ${fmtMD(d)}</b> <span class="minus">${ft(r.L.v)}</span> ${fmtT(d)}${r.light < 1 ? " (dusk)" : ""}`; }).join(" · ")
+        return `<b>${fmtDay(d)} ${fmtMD(d)}</b> <span class="minus">${ft(r.L.v)}</span> ${fmtT(d)}${r.light < 1 ? " (twilight)" : ""}`; }).join(" · ")
     : "";
 }
 function renderUpcoming(){
